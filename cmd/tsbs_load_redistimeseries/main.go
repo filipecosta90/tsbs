@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"crypto/md5"
 	"encoding/binary"
-	"flag"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"fmt"
+	"github.com/timescale/tsbs/internal/utils"
 	"io"
 	"log"
 	"strconv"
@@ -39,15 +41,27 @@ var md5h = md5.New()
 // Parse args:
 func init() {
 	var config load.BenchmarkRunnerConfig
+	config.AddToFlagSet(pflag.CommandLine)
 
-	loader = load.GetBenchmarkRunnerWithBatchSize(config,1000)
-	flag.StringVar(&host, "host", "localhost:6379", "The host:port for Redis connection")
-	flag.Uint64Var(&connections, "connections", 10, "The number of connections per worker")
-	flag.Uint64Var(&pipeline, "pipeline", 50, "The pipeline's size")
-	flag.BoolVar(&singleQueue, "single-queue", true, "Whether to use a single queue")
-	flag.Uint64Var(&checkChunks, "check-chunks", 0, "Whether to perform post ingestion chunck count")
-	flag.StringVar(&dataModel, "data-model", "redistimeseries", "Data model (redistimeseries, rediszsetdevice, rediszsetmetric, redisstream)")
-	flag.Parse()
+	pflag.StringVar(&host, "host", "localhost:6379", "The host:port for Redis connection")
+	pflag.Uint64Var(&connections, "connections", 10, "The number of connections per worker")
+	pflag.Uint64Var(&pipeline, "pipeline", 50, "The pipeline's size")
+	pflag.BoolVar(&singleQueue, "single-queue", true, "Whether to use a single queue")
+	pflag.Uint64Var(&checkChunks, "check-chunks", 0, "Whether to perform post ingestion chunck count")
+	pflag.StringVar(&dataModel, "data-model", "redistimeseries", "Data model (redistimeseries, rediszsetdevice, rediszsetmetric, redisstream)")
+	pflag.Parse()
+
+	err := utils.SetupConfigFile()
+
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %s", err))
+	}
+
+	if err := viper.Unmarshal(&config); err != nil {
+		panic(fmt.Errorf("unable to decode config: %s", err))
+	}
+	loader = load.GetBenchmarkRunner(config)
+
 }
 
 type benchmark struct {
