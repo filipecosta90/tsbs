@@ -9,6 +9,13 @@ import (
 	"github.com/timescale/tsbs/query"
 )
 
+// TODO: Remove the need for this by continuing to bubble up errors
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
 const (
 	oneMinute = 60
 	oneHour   = oneMinute * 60
@@ -16,13 +23,10 @@ const (
 
 // Devops produces RedisTimeSeries-specific queries for all the devops query types.
 type Devops struct {
+	*BaseGenerator
 	*devops.Core
 }
 
-// NewDevops makes an Devops object ready to generate Queries.
-func NewDevops(start, end time.Time, scale int) *Devops {
-	return &Devops{devops.NewCore(start, end, scale)}
-}
 
 // GenerateEmptyQuery returns an empty query.RedisTimeSeries
 func (d *Devops) GenerateEmptyQuery() query.Query {
@@ -36,14 +40,15 @@ func (d *Devops) GroupByTime(qi query.Query, nHosts, numMetrics int, timeRange t
 	if numMetrics > 1 || nHosts > 1 {
 		log.Fatal("Not supported for more than 1 hostname/ 1 metric")
 	}
-	interval := d.Interval.RandWindow(timeRange)
-	metrics := devops.GetCPUMetricsSlice(numMetrics)
+	interval := d.Interval.MustRandWindow(timeRange)
+	metrics, err := devops.GetCPUMetricsSlice(numMetrics)
+	panicIfErr(err)
 	metric := metrics[0]
-	hostnames := d.GetRandomHosts(nHosts)
+	hostnames, err := d.GetRandomHosts(nHosts)
 
 	redisQuery := fmt.Sprintf(`TS.MRANGE %d %d AGGREGATION max %d FILTER hostname=%s fieldname=%s`,
-		interval.Start.Unix(),
-		interval.End.Unix(),
+		interval.StartUnixMillis(),
+		interval.EndUnixMillis(),
 		oneMinute,
 		hostnames[0],
 		metric)
@@ -57,17 +62,18 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
 	if numMetrics != 1 && numMetrics != devops.GetCPUMetricsLen() {
 		log.Fatal("Supports only 1 cpu metric or all cpu metrics")
 	}
-	interval := d.Interval.RandWindow(devops.DoubleGroupByDuration)
+	interval := d.Interval.MustRandWindow(devops.DoubleGroupByDuration)
 
 	redisQuery := fmt.Sprintf(`TS.MRANGE %d %d AGGREGATION avg %d FILTER measurement=cpu`,
-		interval.Start.Unix(),
-		interval.End.Unix(),
+		interval.StartUnixMillis(),
+		interval.EndUnixMillis(),
 		oneHour)
 
 	// add specific fieldname if needed. Currently only one cpu metric is supported.
 	if numMetrics == 1 {
 		redisQuery += " fieldname="
-		redisQuery += devops.GetCPUMetricsSlice(1)[0]
+		metrics, _ := devops.GetCPUMetricsSlice(numMetrics)
+		redisQuery += metrics[0]
 	}
 
 	humanLabel := devops.GetDoubleGroupByLabel("RedisTimeSeries", numMetrics)
@@ -78,12 +84,13 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
 // MaxAllCPU fetches the aggregate across all CPU metrics per hour over 1 hour for a single host.
 // Currently only one host is supported
 func (d *Devops) MaxAllCPU(qi query.Query, nHosts int) {
-	interval := d.Interval.RandWindow(devops.MaxAllDuration)
-	hostnames := d.GetRandomHosts(nHosts)
+	interval := d.Interval.MustRandWindow(devops.MaxAllDuration)
+	hostnames, err := d.GetRandomHosts(nHosts)
+	panicIfErr(err)
 
 	redisQuery := fmt.Sprintf(`TS.MRANGE %d %d AGGREGATION max %d FILTER measurement=cpu hostname=%s`,
-		interval.Start.Unix(),
-		interval.End.Unix(),
+		interval.StartUnixMillis(),
+		interval.EndUnixMillis(),
 		oneHour,
 		//currently support only one host
 		hostnames[0])
@@ -91,12 +98,4 @@ func (d *Devops) MaxAllCPU(qi query.Query, nHosts int) {
 	humanLabel := devops.GetMaxAllLabel("RedisTimeSeries", nHosts)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
 	d.fillInQuery(qi, humanLabel, humanDesc, redisQuery)
-}
-
-// fill Query fills the query struct with data
-func (d *Devops) fillInQuery(qi query.Query, humanLabel, humanDesc, redisQuery string) {
-	q := qi.(*query.RedisTimeSeries)
-	q.HumanLabel = []byte(humanLabel)
-	q.HumanDescription = []byte(humanDesc)
-	q.RedisQuery = []byte(redisQuery)
 }

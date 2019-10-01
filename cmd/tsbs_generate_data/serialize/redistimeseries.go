@@ -33,7 +33,7 @@ func (s *RedisTimeSeriesSerializer) Serialize(p *Point, w io.Writer) (err error)
 		labels = append(labels, ' ')
 		labels = append(labels, p.tagKeys[i]...)
 		labels = append(labels, ' ')
-		labels = append(labels, v...)
+		labels = fastFormatAppend( v, labels )
 
 		// construct a string of {hostname=host_1,region=us-west-1,...} to be used for unique name for key
 		if i > 0 {
@@ -43,7 +43,8 @@ func (s *RedisTimeSeriesSerializer) Serialize(p *Point, w io.Writer) (err error)
 		}
 		labelsForKeyName = append(labelsForKeyName, p.tagKeys[i]...)
 		labelsForKeyName = append(labelsForKeyName, '=')
-		labelsForKeyName = append(labelsForKeyName, v...)
+		labelsForKeyName = fastFormatAppend( v, labelsForKeyName )
+
 	}
 
 	if len(labelsForKeyName) > 0 {

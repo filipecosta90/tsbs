@@ -2,27 +2,18 @@ package influx
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
+	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases"
 	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/uses/devops"
 	"github.com/timescale/tsbs/query"
 )
 
 // Devops produces Influx-specific queries for all the devops query types.
 type Devops struct {
+	*BaseGenerator
 	*devops.Core
-}
-
-// NewDevops makes an Devops object ready to generate Queries.
-func NewDevops(start, end time.Time, scale int) *Devops {
-	return &Devops{devops.NewCore(start, end, scale)}
-}
-
-// GenerateEmptyQuery returns an empty query.HTTP
-func (d *Devops) GenerateEmptyQuery() query.Query {
-	return query.NewHTTP()
 }
 
 func (d *Devops) getHostWhereWithHostnames(hostnames []string) string {
@@ -36,7 +27,8 @@ func (d *Devops) getHostWhereWithHostnames(hostnames []string) string {
 }
 
 func (d *Devops) getHostWhereString(nHosts int) string {
-	hostnames := d.GetRandomHosts(nHosts)
+	hostnames, err := d.GetRandomHosts(nHosts)
+	databases.PanicIfErr(err)
 	return d.getHostWhereWithHostnames(hostnames)
 }
 
@@ -59,8 +51,9 @@ func (d *Devops) getSelectClausesAggMetrics(agg string, metrics []string) []stri
 // AND time >= '$HOUR_START' AND time < '$HOUR_END'
 // GROUP BY minute ORDER BY minute ASC
 func (d *Devops) GroupByTime(qi query.Query, nHosts, numMetrics int, timeRange time.Duration) {
-	interval := d.Interval.RandWindow(timeRange)
-	metrics := devops.GetCPUMetricsSlice(numMetrics)
+	interval := d.Interval.MustRandWindow(timeRange)
+	metrics, err := devops.GetCPUMetricsSlice(numMetrics)
+	databases.PanicIfErr(err)
 	selectClauses := d.getSelectClausesAggMetrics("max", metrics)
 	whereHosts := d.getHostWhereString(nHosts)
 
@@ -76,7 +69,7 @@ func (d *Devops) GroupByTime(qi query.Query, nHosts, numMetrics int, timeRange t
 // GROUP BY t ORDER BY t DESC
 // LIMIT $LIMIT
 func (d *Devops) GroupByOrderByLimit(qi query.Query) {
-	interval := d.Interval.RandWindow(time.Hour)
+	interval := d.Interval.MustRandWindow(time.Hour)
 	where := fmt.Sprintf("WHERE time < '%s'", interval.EndString())
 
 	humanLabel := "Influx max cpu over last 5 min-intervals (random end)"
@@ -93,8 +86,9 @@ func (d *Devops) GroupByOrderByLimit(qi query.Query) {
 // WHERE time >= '$HOUR_START' AND time < '$HOUR_END'
 // GROUP BY hour, hostname ORDER BY hour, hostname
 func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
-	metrics := devops.GetCPUMetricsSlice(numMetrics)
-	interval := d.Interval.RandWindow(devops.DoubleGroupByDuration)
+	metrics, err := devops.GetCPUMetricsSlice(numMetrics)
+	databases.PanicIfErr(err)
+	interval := d.Interval.MustRandWindow(devops.DoubleGroupByDuration)
 	selectClauses := d.getSelectClausesAggMetrics("mean", metrics)
 
 	humanLabel := devops.GetDoubleGroupByLabel("Influx", numMetrics)
@@ -111,7 +105,7 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
 // AND time >= '$HOUR_START' AND time < '$HOUR_END'
 // GROUP BY hour ORDER BY hour
 func (d *Devops) MaxAllCPU(qi query.Query, nHosts int) {
-	interval := d.Interval.RandWindow(devops.MaxAllDuration)
+	interval := d.Interval.MustRandWindow(devops.MaxAllDuration)
 	whereHosts := d.getHostWhereString(nHosts)
 	selectClauses := d.getSelectClausesAggMetrics("max", devops.GetAllCPUMetrics())
 
@@ -138,7 +132,8 @@ func (d *Devops) LastPointPerHost(qi query.Query) {
 // AND time >= '$TIME_START' AND time < '$TIME_END'
 // AND (hostname = '$HOST' OR hostname = '$HOST2'...)
 func (d *Devops) HighCPUForHosts(qi query.Query, nHosts int) {
-	interval := d.Interval.RandWindow(devops.HighCPUDuration)
+	interval := d.Interval.MustRandWindow(devops.HighCPUDuration)
+
 	var hostWhereClause string
 	if nHosts == 0 {
 		hostWhereClause = ""
@@ -146,19 +141,9 @@ func (d *Devops) HighCPUForHosts(qi query.Query, nHosts int) {
 		hostWhereClause = fmt.Sprintf("and %s", d.getHostWhereString(nHosts))
 	}
 
-	humanLabel := devops.GetHighCPULabel("Influx", nHosts)
-	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval)
+	humanLabel, err := devops.GetHighCPULabel("Influx", nHosts)
+	databases.PanicIfErr(err)
+	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
 	influxql := fmt.Sprintf("SELECT * from cpu where usage_user > 90.0 %s and time >= '%s' and time < '%s'", hostWhereClause, interval.StartString(), interval.EndString())
 	d.fillInQuery(qi, humanLabel, humanDesc, influxql)
-}
-
-func (d *Devops) fillInQuery(qi query.Query, humanLabel, humanDesc, influxql string) {
-	v := url.Values{}
-	v.Set("q", influxql)
-	q := qi.(*query.HTTP)
-	q.HumanLabel = []byte(humanLabel)
-	q.HumanDescription = []byte(humanDesc)
-	q.Method = []byte("GET")
-	q.Path = []byte(fmt.Sprintf("/query?%s", v.Encode()))
-	q.Body = nil
 }

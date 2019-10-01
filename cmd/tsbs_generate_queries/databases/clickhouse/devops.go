@@ -9,23 +9,17 @@ import (
 	"github.com/timescale/tsbs/query"
 )
 
-// Devops produces ClickHouse-specific queries for all the devops query types.
-type Devops struct {
-	*devops.Core
-	UseTags bool
-}
-
-// NewDevops makes an Devops object ready to generate Queries.
-func NewDevops(start, end time.Time, scale int) *Devops {
-	return &Devops{
-		devops.NewCore(start, end, scale),
-		false,
+// TODO: Remove the need for this by continuing to bubble up errors
+func panicIfErr(err error) {
+	if err != nil {
+		panic(err.Error())
 	}
 }
 
-// GenerateEmptyQuery returns an empty query.ClickHouse
-func (d *Devops) GenerateEmptyQuery() query.Query {
-	return query.NewClickHouse()
+// Devops produces ClickHouse-specific queries for all the devops query types.
+type Devops struct {
+	*BaseGenerator
+	*devops.Core
 }
 
 // getHostWhereWithHostnames creates WHERE SQL statement for multiple hostnames.
@@ -58,7 +52,8 @@ func (d *Devops) getHostWhereWithHostnames(hostnames []string) string {
 
 // getHostWhereString gets multiple random hostnames and create WHERE SQL statement for these hostnames.
 func (d *Devops) getHostWhereString(nhosts int) string {
-	hostnames := d.GetRandomHosts(nhosts)
+	hostnames, err := d.GetRandomHosts(nhosts)
+	panicIfErr(err)
 	return d.getHostWhereWithHostnames(hostnames)
 }
 
@@ -91,7 +86,7 @@ const clickhouseTimeStringFormat = "2006-01-02 15:04:05"
 // cpu-max-all-1
 // cpu-max-all-8
 func (d *Devops) MaxAllCPU(qi query.Query, nHosts int) {
-	interval := d.Interval.RandWindow(devops.MaxAllDuration)
+	interval := d.Interval.MustRandWindow(devops.MaxAllDuration)
 	metrics := devops.GetAllCPUMetrics()
 	selectClauses := d.getSelectClausesAggMetrics("max", metrics)
 
@@ -106,12 +101,12 @@ func (d *Devops) MaxAllCPU(qi query.Query, nHosts int) {
         `,
 		strings.Join(selectClauses, ", "),
 		d.getHostWhereString(nHosts),
-		interval.Start.Format(clickhouseTimeStringFormat),
-		interval.End.Format(clickhouseTimeStringFormat))
+		interval.Start().Format(clickhouseTimeStringFormat),
+		interval.End().Format(clickhouseTimeStringFormat))
 
 	humanLabel := devops.GetMaxAllLabel("ClickHouse", nHosts)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQuery(qi, humanLabel, humanDesc, devops.TableName, sql)
 }
 
 // GroupByTimeAndPrimaryTag selects the AVG of numMetrics metrics under 'cpu' per device per hour for a day,
@@ -128,8 +123,9 @@ func (d *Devops) MaxAllCPU(qi query.Query, nHosts int) {
 // double-groupby-5
 // double-groupby-all
 func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
-	metrics := devops.GetCPUMetricsSlice(numMetrics)
-	interval := d.Interval.RandWindow(devops.DoubleGroupByDuration)
+	metrics, err := devops.GetCPUMetricsSlice(numMetrics)
+	panicIfErr(err)
+	interval := d.Interval.MustRandWindow(devops.DoubleGroupByDuration)
 
 	selectClauses := make([]string, numMetrics)
 	meanClauses := make([]string, numMetrics)
@@ -149,7 +145,7 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
             hour,
             %s,
             %s
-        FROM 
+        FROM
         (
             SELECT
                 toStartOfHour(created_at) AS hour,
@@ -161,22 +157,22 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
                 hour,
                 id
         ) AS cpu_avg
-        %s 
+        %s
         ORDER BY
             hour ASC,
             %s
         `,
-		hostnameField,                                     // main SELECT %s,
-		strings.Join(meanClauses, ", "),              // main SELECT %s
-		strings.Join(selectClauses, ", "),            // cpu_avg SELECT %s
-		interval.Start.Format(clickhouseTimeStringFormat), // cpu_avg time >= '%s'
-		interval.End.Format(clickhouseTimeStringFormat),   // cpu_avg time < '%s'
+		hostnameField,                                       // main SELECT %s,
+		strings.Join(meanClauses, ", "),                     // main SELECT %s
+		strings.Join(selectClauses, ", "),                   // cpu_avg SELECT %s
+		interval.Start().Format(clickhouseTimeStringFormat), // cpu_avg time >= '%s'
+		interval.End().Format(clickhouseTimeStringFormat),   // cpu_avg time < '%s'
 		joinClause,    // JOIN clause
 		hostnameField) // ORDER BY %s
 
 	humanLabel := devops.GetDoubleGroupByLabel("ClickHouse", numMetrics)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQuery(qi, humanLabel, humanDesc, devops.TableName, sql)
 }
 
 // GroupByOrderByLimit populates a query.Query that has a time WHERE clause, that groups by a truncated date, orders by that date, and takes a limit:
@@ -190,7 +186,8 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
 // Resultsets:
 // groupby-orderby-limit
 func (d *Devops) GroupByOrderByLimit(qi query.Query) {
-	interval := d.Interval.RandWindow(time.Hour)
+	interval := d.Interval.MustRandWindow(time.Hour)
+
 	sql := fmt.Sprintf(`
         SELECT
             toStartOfMinute(created_at) AS minute,
@@ -201,11 +198,11 @@ func (d *Devops) GroupByOrderByLimit(qi query.Query) {
         ORDER BY minute DESC
         LIMIT 5
         `,
-		interval.End.Format(clickhouseTimeStringFormat))
+		interval.End().Format(clickhouseTimeStringFormat))
 
 	humanLabel := "ClickHouse max cpu over last 5 min-intervals (random end)"
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.EndString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQuery(qi, humanLabel, humanDesc, devops.TableName, sql)
 }
 
 // HighCPUForHosts populates a query that gets CPU metrics when the CPU has high
@@ -227,20 +224,21 @@ func (d *Devops) HighCPUForHosts(qi query.Query, nHosts int) {
 	} else {
 		hostWhereClause = fmt.Sprintf("AND (%s)", d.getHostWhereString(nHosts))
 	}
-	interval := d.Interval.RandWindow(devops.HighCPUDuration)
+	interval := d.Interval.MustRandWindow(devops.HighCPUDuration)
 
 	sql := fmt.Sprintf(`
         SELECT *
         FROM cpu
         PREWHERE (usage_user > 90.0) AND (created_at >= '%s') AND (created_at <  '%s') %s
         `,
-		interval.Start.Format(clickhouseTimeStringFormat),
-		interval.End.Format(clickhouseTimeStringFormat),
+		interval.Start().Format(clickhouseTimeStringFormat),
+		interval.End().Format(clickhouseTimeStringFormat),
 		hostWhereClause)
 
-	humanLabel := devops.GetHighCPULabel("ClickHouse", nHosts)
+	humanLabel, err := devops.GetHighCPULabel("ClickHouse", nHosts)
+	panicIfErr(err)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQuery(qi, humanLabel, humanDesc, devops.TableName, sql)
 }
 
 // LastPointPerHost finds the last row for every host in the dataset
@@ -255,8 +253,8 @@ func (d *Devops) LastPointPerHost(qi query.Query) {
             FROM
             (
                 SELECT *
-                FROM cpu 
-                WHERE (tags_id, created_at) IN 
+                FROM cpu
+                WHERE (tags_id, created_at) IN
                 (
                     SELECT
                         tags_id,
@@ -282,7 +280,7 @@ func (d *Devops) LastPointPerHost(qi query.Query) {
 
 	humanLabel := "ClickHouse last row per host"
 	humanDesc := humanLabel
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQuery(qi, humanLabel, humanDesc, devops.TableName, sql)
 }
 
 // GroupByTime selects the MAX for numMetrics metrics under 'cpu',
@@ -306,8 +304,9 @@ func (d *Devops) LastPointPerHost(qi query.Query) {
 // single-groupby-5-1-1
 // single-groupby-5-8-1
 func (d *Devops) GroupByTime(qi query.Query, nHosts, numMetrics int, timeRange time.Duration) {
-	interval := d.Interval.RandWindow(timeRange)
-	metrics := devops.GetCPUMetricsSlice(numMetrics)
+	interval := d.Interval.MustRandWindow(timeRange)
+	metrics, err := devops.GetCPUMetricsSlice(numMetrics)
+	panicIfErr(err)
 	selectClauses := d.getSelectClausesAggMetrics("max", metrics)
 
 	sql := fmt.Sprintf(`
@@ -321,19 +320,10 @@ func (d *Devops) GroupByTime(qi query.Query, nHosts, numMetrics int, timeRange t
         `,
 		strings.Join(selectClauses, ", "),
 		d.getHostWhereString(nHosts),
-		interval.Start.Format(clickhouseTimeStringFormat),
-		interval.End.Format(clickhouseTimeStringFormat))
+		interval.Start().Format(clickhouseTimeStringFormat),
+		interval.End().Format(clickhouseTimeStringFormat))
 
 	humanLabel := fmt.Sprintf("ClickHouse %d cpu metric(s), random %4d hosts, random %s by 1m", numMetrics, nHosts, timeRange)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
-}
-
-// fill Query fills the query struct with data
-func (d *Devops) fillInQuery(qi query.Query, humanLabel, humanDesc, sql string) {
-	q := qi.(*query.ClickHouse)
-	q.HumanLabel = []byte(humanLabel)
-	q.HumanDescription = []byte(humanDesc)
-	q.Table = []byte("cpu")
-	q.SqlQuery = []byte(sql)
+	d.fillInQuery(qi, humanLabel, humanDesc, devops.TableName, sql)
 }

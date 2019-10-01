@@ -5,12 +5,14 @@
 package main
 
 import (
-	"flag"
+
 	"fmt"
+	"github.com/timescale/tsbs/internal/utils"
 	"log"
 	"strings"
 	"time"
-
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	redistimeseries "github.com/RedisTimeSeries/redistimeseries-go"
 	_ "github.com/lib/pq"
 	"github.com/timescale/tsbs/query"
@@ -34,12 +36,25 @@ var (
 
 // Parse args:
 func init() {
-	runner = query.NewBenchmarkRunner()
+	var config query.BenchmarkRunnerConfig
+	config.AddToFlagSet(pflag.CommandLine)
 
-	flag.StringVar(&host, "host", "localhost:6379", "Redis host address and port")
+
+	pflag.StringVar(&host, "host", "localhost:6379", "Redis host address and port")
 	//flag.Uint64Var(&scale, "scale", 8, "Scaling variable (Must be the equal to the scalevar used for data generation).")
 
-	flag.Parse()
+	pflag.Parse()
+
+	err := utils.SetupConfigFile()
+
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %s", err))
+	}
+
+	if err := viper.Unmarshal(&config); err != nil {
+		panic(fmt.Errorf("unable to decode config: %s", err))
+	}
+	runner = query.NewBenchmarkRunner(config)
 
 	redisConnector = redistimeseries.NewClient(
 		host, runner.DatabaseName(),nil)

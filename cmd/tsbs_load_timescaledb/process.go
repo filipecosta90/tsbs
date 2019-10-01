@@ -1,14 +1,17 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/stdlib"
 	"github.com/lib/pq"
 	"github.com/timescale/tsbs/load"
 )
@@ -34,20 +37,16 @@ func newSyncCSI() *syncCSI {
 // therefore all workers need to know about the same map from hostname -> tags_id
 var globalSyncCSI = newSyncCSI()
 
-func subsystemTagsToJSON(tags []string) string {
-	json := "{"
-	for i, t := range tags {
+func subsystemTagsToJSON(tags []string) map[string]interface{} {
+	json := map[string]interface{}{}
+	for _, t := range tags {
 		args := strings.Split(t, "=")
-		if i > 0 {
-			json += ","
-		}
-		json += fmt.Sprintf("\"%s\": \"%s\"", args[0], args[1])
+		json[args[0]] = args[1]
 	}
-	json += "}"
 	return json
 }
 
-func insertTags(db *sqlx.DB, tagRows [][]string, returnResults bool) map[string]int64 {
+func insertTags(db *sql.DB, tagRows [][]string, returnResults bool) map[string]int64 {
 	tagCols := tableCols[tagsKey]
 	cols := tagCols
 	values := make([]string, 0)
@@ -55,24 +54,26 @@ func insertTags(db *sqlx.DB, tagRows [][]string, returnResults bool) map[string]
 	if useJSON {
 		cols = []string{"tagset"}
 		for _, row := range tagRows {
+			jsonValues := convertValsToJSONBasedOnType(row[:commonTagsLen], tagColumnTypes[:commonTagsLen])
 			json := "('{"
 			for i, k := range tagCols {
 				if i != 0 {
 					json += ","
 				}
-				json += fmt.Sprintf("\"%s\":\"%s\"", k, row[i])
+				json += fmt.Sprintf("\"%s\":%s", k, jsonValues[i])
 			}
 			json += "}')"
 			values = append(values, json)
 		}
 	} else {
 		for _, val := range tagRows {
-			values = append(values, fmt.Sprintf("('%s')", strings.Join(val[:commonTagsLen], "','")))
+			sqlValues := convertValsToSQLBasedOnType(val[:commonTagsLen], tagColumnTypes[:commonTagsLen])
+			row := fmt.Sprintf("(%s)", strings.Join(sqlValues, ","))
+			values = append(values, row)
 		}
 	}
-	tx := db.MustBegin()
+	tx := MustBegin(db)
 	defer tx.Commit()
-
 	res, err := tx.Query(fmt.Sprintf(`INSERT INTO tags(%s) VALUES %s ON CONFLICT DO NOTHING RETURNING *`, strings.Join(cols, ","), strings.Join(values, ",")))
 	if err != nil {
 		panic(err)
@@ -122,7 +123,7 @@ func splitTagsAndMetrics(rows []*insertData, dataCols int) ([][]string, [][]inte
 	for _, data := range rows {
 		// Split the tags into individual common tags and an extra bit leftover
 		// for non-common tags that need to be added separately. For each of
-		// the common tags, remove everything after = in the form <label>=<val>
+		// the common tags, remove everything before = in the form <label>=<val>
 		// since we won't need it.
 		tags := strings.SplitN(data.tags, ",", commonTagsLen+1)
 		for i := 0; i < commonTagsLen; i++ {
@@ -141,7 +142,7 @@ func splitTagsAndMetrics(rows []*insertData, dataCols int) ([][]string, [][]inte
 		if err != nil {
 			panic(err)
 		}
-		ts := time.Unix(0, timeInt).Format(time.RFC3339)
+		ts := time.Unix(0, timeInt)
 
 		// use nil at 2nd position as placeholder for tagKey
 		r := make([]interface{}, 3, dataCols)
@@ -150,7 +151,17 @@ func splitTagsAndMetrics(rows []*insertData, dataCols int) ([][]string, [][]inte
 			r = append(r, tags[0])
 		}
 		for _, v := range metrics[1:] {
-			r = append(r, v)
+			if v == "" {
+				r = append(r, nil)
+				continue
+			}
+
+			num, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				panic(err)
+			}
+
+			r = append(r, num)
 		}
 
 		dataRows = append(dataRows, r)
@@ -191,7 +202,6 @@ func (p *processor) processCSI(hypertable string, rows []*insertData) uint64 {
 		dataRows[i][1] = p.csi.m[tagKey]
 	}
 	p.csi.mutex.RUnlock()
-	tx := p.db.MustBegin()
 
 	cols := make([]string, 0, colLen)
 	cols = append(cols, "time", "tags_id", "additional_tags")
@@ -199,44 +209,66 @@ func (p *processor) processCSI(hypertable string, rows []*insertData) uint64 {
 		cols = append(cols, tableCols[tagsKey][0])
 	}
 	cols = append(cols, tableCols[hypertable]...)
-	stmt, err := tx.Prepare(pq.CopyIn(hypertable, cols...))
-	if err != nil {
-		panic(err)
-	}
 
-	for _, r := range dataRows {
-		stmt.Exec(r...)
-	}
-	_, err = stmt.Exec()
-	if err != nil {
-		panic(err)
-	}
+	if forceTextFormat {
+		tx := MustBegin(p.db)
+		stmt, err := tx.Prepare(pq.CopyIn(hypertable, cols...))
+		if err != nil {
+			panic(err)
+		}
 
-	err = stmt.Close()
-	if err != nil {
-		panic(err)
-	}
+		for _, r := range dataRows {
+			stmt.Exec(r...)
+		}
+		_, err = stmt.Exec()
+		if err != nil {
+			panic(err)
+		}
 
-	err = tx.Commit()
-	if err != nil {
-		panic(err)
+		err = stmt.Close()
+		if err != nil {
+			panic(err)
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		rows := pgx.CopyFromRows(dataRows)
+		inserted, err := p.pgxConn.CopyFrom(pgx.Identifier{hypertable}, cols, rows)
+		if err != nil {
+			panic(err)
+		}
+		if inserted != len(dataRows) {
+			fmt.Fprintf(os.Stderr, "Failed to insert all the data! Expected: %d, Got: %d", len(dataRows), inserted)
+			os.Exit(1)
+		}
 	}
 
 	return numMetrics
 }
 
 type processor struct {
-	db  *sqlx.DB
-	csi *syncCSI
+	db      *sql.DB
+	csi     *syncCSI
+	pgxConn *pgx.Conn
 }
 
 func (p *processor) Init(workerNum int, doLoad bool) {
 	if doLoad {
-		p.db = sqlx.MustConnect(dbType, getConnectString())
+		p.db = MustConnect(driver, getConnectString())
 		if hashWorkers {
 			p.csi = newSyncCSI()
 		} else {
 			p.csi = globalSyncCSI
+		}
+		if !forceTextFormat {
+			conn, err := stdlib.AcquireConn(p.db)
+			if err != nil {
+				panic(err)
+			}
+			p.pgxConn = conn
 		}
 	}
 }
@@ -244,6 +276,12 @@ func (p *processor) Init(workerNum int, doLoad bool) {
 func (p *processor) Close(doLoad bool) {
 	if doLoad {
 		p.db.Close()
+	}
+	if p.pgxConn != nil {
+		err := stdlib.ReleaseConn(p.db, p.pgxConn)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -268,4 +306,29 @@ func (p *processor) ProcessBatch(b load.Batch, doLoad bool) (uint64, uint64) {
 	batches.m = map[string][]*insertData{}
 	batches.cnt = 0
 	return metricCnt, uint64(rowCnt)
+}
+func convertValsToSQLBasedOnType(values []string, types []string) []string {
+	return convertValsToBasedOnType(values, types, "'", "NULL")
+}
+
+func convertValsToJSONBasedOnType(values []string, types []string) []string {
+	return convertValsToBasedOnType(values, types, `"`, "null")
+}
+
+func convertValsToBasedOnType(values []string, types []string, quotemark string, null string) []string {
+	sqlVals := make([]string, len(values))
+	for i, val := range values {
+		if val == "" {
+			sqlVals[i] = null
+			continue
+		}
+		switch types[i] {
+		case "string":
+			sqlVals[i] = quotemark + val + quotemark
+		default:
+			sqlVals[i] = val
+		}
+	}
+
+	return sqlVals
 }

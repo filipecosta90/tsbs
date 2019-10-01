@@ -1,6 +1,7 @@
 package main
 
 import (
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -10,33 +11,40 @@ func TestSubsystemTagsToJSON(t *testing.T) {
 	cases := []struct {
 		desc string
 		tags []string
-		want string
+		want map[string]interface{}
 	}{
 		{
 			desc: "empty tag list",
 			tags: []string{},
-			want: "{}",
+			want: map[string]interface{}{},
 		},
 		{
 			desc: "only one tag (no commas needed)",
 			tags: []string{"foo=1"},
-			want: "{\"foo\": \"1\"}",
+			want: map[string]interface{}{"foo": "1"},
 		},
 		{
 			desc: "two tags (need comma)",
 			tags: []string{"foo=1", "bar=baz"},
-			want: "{\"foo\": \"1\",\"bar\": \"baz\"}",
+			want: map[string]interface{}{"foo": "1", "bar": "baz"},
 		},
 		{
 			desc: "three tags",
 			tags: []string{"foo=1", "bar=baz", "test=true"},
-			want: "{\"foo\": \"1\",\"bar\": \"baz\",\"test\": \"true\"}",
+			want: map[string]interface{}{"foo": "1", "bar": "baz", "test": "true"},
 		},
 	}
 
 	for _, c := range cases {
-		if got := subsystemTagsToJSON(c.tags); got != c.want {
-			t.Errorf("%s: incorrect output: got %s want %s", c.desc, got, c.want)
+		res := subsystemTagsToJSON(c.tags)
+		if got := len(res); got != len(c.want) {
+			t.Errorf("%s: incorrect result length: got %d want %d", c.desc, got, len(c.want))
+		} else {
+			for k, v := range c.want {
+				if got := res[k]; got != v {
+					t.Errorf("%s: incorrect value for %s: got %s want %s", c.desc, k, got, v)
+				}
+			}
 		}
 	}
 }
@@ -89,8 +97,8 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 			wantMetrics: 6,
 			wantTags:    [][]string{{"foo", "bar"}, {"foofoo", "barbar"}},
 			wantData: [][]interface{}{
-				[]interface{}{toTS("100"), nil, nil, "1", "5", "42"},
-				[]interface{}{toTS("200"), nil, nil, "1", "5", "45"},
+				[]interface{}{toTS("100"), nil, nil, 1.0, 5.0, 42.0},
+				[]interface{}{toTS("200"), nil, nil, 1.0, 5.0, 45.0},
 			},
 		},
 		{
@@ -99,8 +107,8 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 			wantMetrics: 6,
 			wantTags:    [][]string{{"foo", "bar"}, {"foofoo", "barbar"}},
 			wantData: [][]interface{}{
-				[]interface{}{toTS("100"), nil, "{\"tag3\": \"baz\"}", "1", "5", "42"},
-				[]interface{}{toTS("200"), nil, "{\"tag3\": \"BAZ\"}", "1", "5", "45"},
+				[]interface{}{toTS("100"), nil, map[string]interface{}{"tag3": "baz"}, 1.0, 5.0, 42.0},
+				[]interface{}{toTS("200"), nil, map[string]interface{}{"tag3": "BAZ"}, 1.0, 5.0, 45.0},
 			},
 		},
 		{
@@ -110,8 +118,8 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 			wantMetrics: 6,
 			wantTags:    [][]string{{"foo", "bar"}, {"foofoo", "barbar"}},
 			wantData: [][]interface{}{
-				[]interface{}{toTS("100"), nil, nil, "foo", "1", "5", "42"},
-				[]interface{}{toTS("200"), nil, nil, "foofoo", "1", "5", "45"},
+				[]interface{}{toTS("100"), nil, nil, "foo", 1.0, 5.0, 42.0},
+				[]interface{}{toTS("200"), nil, nil, "foofoo", 1.0, 5.0, 45.0},
 			},
 		},
 		{
@@ -121,8 +129,8 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 			wantMetrics: 6,
 			wantTags:    [][]string{{"foo", "bar"}, {"foofoo", "barbar"}},
 			wantData: [][]interface{}{
-				[]interface{}{toTS("100"), nil, "{\"tag3\": \"baz\"}", "foo", "1", "5", "42"},
-				[]interface{}{toTS("200"), nil, "{\"tag3\": \"BAZ\"}", "foofoo", "1", "5", "45"},
+				[]interface{}{toTS("100"), nil, map[string]interface{}{"tag3": "baz"}, "foo", 1.0, 5.0, 42.0},
+				[]interface{}{toTS("200"), nil, map[string]interface{}{"tag3": "BAZ"}, "foofoo", 1.0, 5.0, 45.0},
 			},
 		},
 		{
@@ -134,6 +142,45 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 				},
 			},
 			shouldPanic: true,
+		},
+		{
+			desc: "empty tag value",
+			rows: []*insertData{
+				{
+					tags:   "tag1=,tag2=bar",
+					fields: "100,1,5,42",
+				},
+			},
+			wantTags: [][]string{{"", "bar"}},
+			wantData: [][]interface{}{
+				[]interface{}{toTS("100"), nil, nil, 1.0, 5.0, 42.0},
+			},
+		},
+		{
+			desc: "empty extra tag value",
+			rows: []*insertData{
+				{
+					tags:   "tag1=foo,tag2=bar,tag3=",
+					fields: "100,1,5,42",
+				},
+			},
+			wantTags: [][]string{{"foo", "bar"}},
+			wantData: [][]interface{}{
+				[]interface{}{toTS("100"), nil, map[string]interface{}{"tag3": ""}, 1.0, 5.0, 42.0},
+			},
+		},
+		{
+			desc: "empty field value",
+			rows: []*insertData{
+				{
+					tags:   "tag1=foo,tag2=bar",
+					fields: "100,,5,42",
+				},
+			},
+			wantTags: [][]string{{"foo", "bar"}},
+			wantData: [][]interface{}{
+				[]interface{}{toTS("100"), nil, nil, nil, 5.0, 42.0},
+			},
 		},
 	}
 
@@ -179,9 +226,20 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 				if got := len(row); got != len(c.wantData[i]) {
 					t.Errorf("%s: data output not same len for row %d: got %d want %d", c.desc, i, got, len(c.wantTags[i]))
 				} else {
-					for j, tag := range row {
+					for j, metric := range row {
 						want := c.wantData[i][j]
-						if got := tag; got != want {
+						var got interface{}
+						if j == 0 {
+							got = metric.(time.Time).Format(time.RFC3339)
+						} else if j == 2 {
+							if !reflect.DeepEqual(metric, want) {
+								t.Errorf("%s: incorrect additional tags: got %v want %v", c.desc, metric, want)
+							}
+							continue
+						} else {
+							got = metric
+						}
+						if got != want {
 							t.Errorf("%s: data incorrect at %d, %d: got %v want %v", c.desc, i, j, got, want)
 						}
 					}
@@ -190,5 +248,15 @@ func TestSplitTagsAndMetrics(t *testing.T) {
 		}
 
 		inTableTag = oldInTableTag
+	}
+}
+
+func TestConvertValsToSQLBasedOnType(t *testing.T) {
+	inVals := []string{"1", "2", "3", "4", "5", ""}
+	inTypes := []string{"text", "int32", "int64", "float32", "float64", "int32"}
+	converted := convertValsToSQLBasedOnType(inVals, inTypes)
+	expected := []string{"'1'", "2", "3", "4", "5", "NULL"}
+	if reflect.DeepEqual(expected, converted) {
+		t.Errorf("error converting to sql values\nexpected: %v\ngot: %v", expected, converted)
 	}
 }

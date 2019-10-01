@@ -38,7 +38,9 @@ var md5h = md5.New()
 
 // Parse args:
 func init() {
-	loader = load.GetBenchmarkRunnerWithBatchSize(1000)
+	var config load.BenchmarkRunnerConfig
+
+	loader = load.GetBenchmarkRunnerWithBatchSize(config,1000)
 	flag.StringVar(&host, "host", "localhost:6379", "The host:port for Redis connection")
 	flag.Uint64Var(&connections, "connections", 10, "The number of connections per worker")
 	flag.Uint64Var(&pipeline, "pipeline", 50, "The pipeline's size")
