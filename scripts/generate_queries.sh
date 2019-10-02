@@ -21,19 +21,17 @@ FORMATS=${FORMATS:-"timescaledb"}
 
 # All available for generation query types (sorted alphabetically)
 QUERY_TYPES_ALL="\
-cpu-max-all-8"
-#\
-#cpu-max-all-1 \
-#cpu-max-all-8 \
-#double-groupby-1 \
-#double-groupby-5 \
-#double-groupby-all \
-#single-groupby-1-1-1 \
-#single-groupby-1-1-12 \
-#single-groupby-1-8-1 \
-#single-groupby-5-1-1 \
-#single-groupby-5-1-12 \
-#single-groupby-5-8-1"
+cpu-max-all-1 \
+cpu-max-all-8 \
+double-groupby-1 \
+double-groupby-5 \
+double-groupby-all \
+single-groupby-1-1-1 \
+single-groupby-1-1-12 \
+single-groupby-1-8-1 \
+single-groupby-5-1-1 \
+single-groupby-5-1-12 \
+single-groupby-5-8-1"
 
 #lastpoint \
 #high-cpu-1 \
