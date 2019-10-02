@@ -58,7 +58,7 @@ Simple aggregrate (MAX) on one metric for 1 host, every 5 mins for 1 hour
 
 Query language
 ```
-TBD
+"TS.MRANGE" "1451648911646" "1451677711646" "AGGREGATION" "max" "3600" "FILTER" "measurement=cpu" "hostname=host_0"
 ```
 
 #### single-groupby-1-1-12
@@ -92,7 +92,10 @@ Simple aggregrate (MAX) on 5 metrics for 1 host, every 5 mins for 12 hours
 
 Query language
 ```
-TBD
+"TS.MRANGE" "1451733760646" "1451776960646" \
+            "AGGREGATION" "max" "300000" \
+            "FILTER" "fieldname=(usage_user,usage_system,usage_idle,usage_nice,usage_iowait)" \
+                     "hostname=host_1"
 ```
 
 #### single-groupby-5-8-1
@@ -101,7 +104,10 @@ Simple aggregrate (MAX) on 5 metrics for 8 hosts, every 5 mins for 1 hour
 
 Query language
 ```
-TBD
+"TS.MRANGE" "1451824006646" "1451827606646" \
+            "AGGREGATION" "max" "300000" \
+            "FILTER" "fieldname=(usage_user,usage_system,usage_idle,usage_nice,usage_iowait)" \
+                     "hostname=(host_1,host_3,host_7,host_6,host_0,host_5,host_4,host_2)"
 ```
 
 #### cpu-max-all-1
@@ -109,7 +115,10 @@ Aggregate across all CPU metrics per hour over 1 hour for a single host
 
 Query language
 ```
-TBD
+"TS.MRANGE" "1451648911646" "1451677711646" \
+            "AGGREGATION" "max" "3600000" \
+            "FILTER" "measurement=cpu" \
+                     "hostname=host_1"
 ```
 
 #### cpu-max-all-8
@@ -117,7 +126,10 @@ Aggregate across all CPU metrics per hour over 1 hour for eight hosts
 
 Query language
 ```
-TBD
+"TS.MRANGE" "1451648911646" "1451677711646" \
+            "AGGREGATION" "max" "3600000" \
+            "FILTER" "measurement=cpu" \
+                     "hostname=(host_1,host_3,host_7,host_6,host_0,host_5,host_4,host_2)"
 ```
 
 #### double-groupby-1
@@ -138,10 +150,10 @@ TBD
 
 Query language
 ```
-TBD
+
 ```
 
-#### high-cpu-all
+#### high-cpu-all ( does not implement query )
 All the readings where one metric is above a threshold across all hosts
 
 Query language
@@ -149,7 +161,7 @@ Query language
 TBD
 ```
 
-#### high-cpu-1
+#### high-cpu-1 ( does not implement query )
  All the readings where one metric is above a threshold for a particular host
 
 Query language
@@ -157,7 +169,7 @@ Query language
 TBD
 ```
 
-#### lastpoint
+#### lastpoint ( does not implement query )
 The last reading for each host
 
 Query language
@@ -165,7 +177,8 @@ Query language
 TBD
 ```
 
-#### groupby-orderby-limit
+#### groupby-orderby-limit ( does not implement query )
+
 The last 5 aggregate readings (across time) before a randomly chosen endpoint
 
 Query language

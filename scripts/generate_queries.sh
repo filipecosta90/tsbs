@@ -21,22 +21,24 @@ FORMATS=${FORMATS:-"timescaledb"}
 
 # All available for generation query types (sorted alphabetically)
 QUERY_TYPES_ALL="\
-cpu-max-all-1 \
-cpu-max-all-8 \
-double-groupby-1 \
-double-groupby-5 \
-double-groupby-all \
-groupby-orderby-limit \
-high-cpu-1 \
-high-cpu-all \
-lastpoint \
-single-groupby-1-1-1 \
-single-groupby-1-1-12 \
-single-groupby-1-8-1 \
-single-groupby-5-1-1 \
-single-groupby-5-1-12 \
-single-groupby-5-8-1"
+cpu-max-all-8"
+#\
+#cpu-max-all-1 \
+#cpu-max-all-8 \
+#double-groupby-1 \
+#double-groupby-5 \
+#double-groupby-all \
+#single-groupby-1-1-1 \
+#single-groupby-1-1-12 \
+#single-groupby-1-8-1 \
+#single-groupby-5-1-1 \
+#single-groupby-5-1-12 \
+#single-groupby-5-8-1"
 
+#lastpoint \
+#high-cpu-1 \
+#high-cpu-all \
+#groupby-orderby-limit \
 # What query types to generate
 QUERY_TYPES=${QUERY_TYPES:-$QUERY_TYPES_ALL}
 
@@ -86,6 +88,7 @@ for QUERY_TYPE in ${QUERY_TYPES}; do
                 --query-type ${QUERY_TYPE} \
                 --scale ${SCALE} \
                 --seed ${SEED} \
+                --debug ${DEBUG} \
                 --timestamp-start ${TS_START} \
                 --timestamp-end ${TS_END} \
                 --use-case ${USE_CASE} \

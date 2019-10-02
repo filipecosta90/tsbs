@@ -73,8 +73,8 @@ func (s *RedisTimeSeriesSerializer) Serialize(p *Point, w io.Writer) (err error)
 
 		lbuf = append(lbuf, ' ')
 
-		// write timestamp
-		lbuf = fastFormatAppend(p.timestamp.UTC().Unix(), lbuf)
+		// write timestamp in ms
+		lbuf = fastFormatAppend(p.timestamp.UTC().Unix()*1000, lbuf)
 		lbuf = append(lbuf, ' ')
 		// write value
 		lbuf = fastFormatAppend(fieldValue, lbuf)
