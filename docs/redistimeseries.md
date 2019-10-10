@@ -7,6 +7,28 @@ should be read *after* the main README.**
 
 
 ---
+
+
+## Installation
+
+TSBS is a collection of Go programs (with some auxiliary bash and Python
+scripts). The easiest way to get and install the Go programs is to use
+`go get` and then `go install`:
+```bash
+# Fetch TSBS and its dependencies
+$ go get github.com/timescale/tsbs
+$ cd $GOPATH/src/github.com/timescale/tsbs/cmd
+$ go get ./...
+
+# Install redistimeseries binaries. 
+cd $GOPATH/src/github.com/timescale/tsbs/cmd
+cd tsbs_generate_data && go install
+cd ../tsbs_generate_queries && go install
+cd ../tsbs_load_redistimeseries && go install
+cd ../tsbs_run_queries_redistimeseries && go install
+cd $GOPATH/src/github.com/timescale/tsbs
+```
+
 ## Full cycle TSBS RedisTimeSeries scripts
 
 Instead of calling tsbs redistimeseries binaries directly, we also supply scripts/*.sh for convenience with many of the flags set to a reasonable default for RedisTimeSeries database. 
@@ -14,8 +36,8 @@ Instead of calling tsbs redistimeseries binaries directly, we also supply script
 So for a Full cycle TSBS RedisTimeSeries benchmark, ensure that RedisTimeSeries is running and then use:
 
 ```
-# generate the dataset
-FORMATS="redistimeseries" SKIP_IF_EXISTS=FALSE  SCALE=4000 SEED=123 \
+# generate the dataset 
+FORMATS="redistimeseries" SKIP_IF_EXISTS=FALSE  SCALE=100 SEED=123 \
     scripts/generate_data.sh
 
 # generate the queries
