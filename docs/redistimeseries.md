@@ -75,7 +75,8 @@ TS.MADD cpu_usage_user{3297394792} 1451606420000 58 cpu_usage_system{3297394792}
 
 ### Devops / cpu-only
 
-#### q1) single-groupby-1-1-1
+#### Simple Rollups 
+##### q1) single-groupby-1-1-1
 Simple aggregrate (MAX) on one metric for 1 host, every 5 mins for 1 hour
 
 Query language
@@ -86,7 +87,7 @@ Query language
                      "hostname=host_1"
 ```
 
-#### q2) single-groupby-1-1-12
+##### q2) single-groupby-1-1-12
 
 Simple aggregrate (MAX) on one metric for 1 host, every 5 mins for 12 hours
 
@@ -98,7 +99,7 @@ Query language
                      "hostname=host_1"
 ```
 
-#### q3) single-groupby-1-8-1
+##### q3) single-groupby-1-8-1
 Simple aggregrate (MAX) on one metric for 8 hosts, every 5 mins for 1 hour
 
 Query language
@@ -110,7 +111,7 @@ Query language
 ```
 
 
-#### q4) single-groupby-5-1-1
+##### q4) single-groupby-5-1-1
  Simple aggregrate (MAX) on 5 metrics for 1 host, every 5 mins for 1 hour
 
 Query language
@@ -122,7 +123,7 @@ Query language
 ```
 
 
-#### q5) single-groupby-5-1-12
+##### q5) single-groupby-5-1-12
 Simple aggregrate (MAX) on 5 metrics for 1 host, every 5 mins for 12 hours
 
 Query language
@@ -133,7 +134,7 @@ Query language
                      "hostname=host_1"
 ```
 
-#### q6) single-groupby-5-8-1
+##### q6) single-groupby-5-8-1
 Simple aggregrate (MAX) on 5 metrics for 8 hosts, every 5 mins for 1 hour
 
 
@@ -145,7 +146,9 @@ Query language
                      "hostname=(host_1,host_3,host_7,host_6,host_0,host_5,host_4,host_2)"
 ```
 
-#### q7) cpu-max-all-1
+#### Simple Aggregations 
+
+##### q7) cpu-max-all-1
 Aggregate across all CPU metrics per hour over 1 hour for a single host
 
 Query language
@@ -156,7 +159,7 @@ Query language
                      "hostname=host_1"
 ```
 
-#### q8) cpu-max-all-8
+##### q8) cpu-max-all-8
 Aggregate across all CPU metrics per hour over 1 hour for eight hosts
 
 Query language
@@ -166,8 +169,8 @@ Query language
             "FILTER" "measurement=cpu" \
                      "hostname=(host_1,host_3,host_7,host_6,host_0,host_5,host_4,host_2)"
 ```
-
-#### q9) double-groupby-1
+#### Double Rollups 
+##### q9) double-groupby-1
 Aggregate on across both time and host, giving the average of 1 CPU metric per host per hour for 24 hours
 
 
@@ -179,7 +182,7 @@ Query language
                      "fieldname=(usage_user)"
 ```
 
-#### q10) double-groupby-5
+##### q10) double-groupby-5
  Aggregate on across both time and host, giving the average of 5 CPU metrics per host per hour for 24 hours
 
 ``` 
@@ -189,7 +192,7 @@ Query language
                      "fieldname=(usage_user,usage_system,usage_idle,usage_nice,usage_iowait)"
 ```
 
-#### double-groupby-all
+##### q11) double-groupby-all
  Aggregate on across both time and host, giving the average of all (10) CPU metrics per host per hour for 24 hours
 
 Query language
@@ -199,7 +202,9 @@ Query language
             "FILTER" "measurement=cpu"
 ```
 
-#### q11) high-cpu-all ( does not implement query )
+#### Thresholds
+
+##### q12) high-cpu-all ( does not implement query )
 All the readings where one metric is above a threshold across all hosts
 
 Query language
@@ -207,7 +212,7 @@ Query language
 TBD
 ```
 
-#### q12) high-cpu-1 ( does not implement query )
+##### q13) high-cpu-1 ( does not implement query )
  All the readings where one metric is above a threshold for a particular host
 
 Query language
@@ -215,7 +220,9 @@ Query language
 TBD
 ```
 
-#### q13) lastpoint ( does not implement query )
+#### Complex queries
+
+##### q14) lastpoint ( does not implement query )
 The last reading for each host
 
 Query language
@@ -223,7 +230,7 @@ Query language
 TBD
 ```
 
-#### q14) groupby-orderby-limit ( does not implement query )
+##### q15) groupby-orderby-limit ( does not implement query )
 
 The last 5 aggregate readings (across time) before a randomly chosen endpoint
 
